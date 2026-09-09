@@ -1,0 +1,39 @@
+# Secrets / local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Node / React
+node_modules/
+dist/
+build/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local databases / data
+*.db
+*.sqlite
+*.sqlite3
+
+# Local datasets
+backend/data/
+data/
+
+# Temporary files
+*.tmp
+*.temp
