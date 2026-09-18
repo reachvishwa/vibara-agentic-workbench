@@ -39,11 +39,17 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Power BI Modeling MCP server (local, stdio-based)
-POWERBI_MCP_PATH = os.getenv("POWERBI_MCP_PATH", "")
+POWERBI_MCP_PATH = os.getenv(
+    "POWERBI_MCP_PATH",
+    r"C:\Users\reach\.vscode\extensions\analysis-services.powerbi-modeling-mcp-0.4.0-win32-x64\server\powerbi-modeling-mcp.exe"
+)
 
 # Filesystem MCP server (official reference server, via npx, stdio-based).
 # Comma-separated list of directories the AI is allowed to access.
-FILESYSTEM_MCP_ALLOWED_DIRS = os.getenv("FILESYSTEM_MCP_ALLOWED_DIRS", os.getcwd()).split(",")
+FILESYSTEM_MCP_ALLOWED_DIRS = os.getenv(
+    "FILESYSTEM_MCP_ALLOWED_DIRS",
+    r"C:\Users\reach\Desktop\NVIDIA_NIM_PROJECTS"
+).split(",")
 
 # DuckDB MCP server (motherduckdb/mcp-server-motherduck, via uvx, stdio-based).
 # Defaults to an in-memory database so CSV/Parquet files can be queried directly
@@ -56,12 +62,19 @@ DUCKDB_MCP_DB_PATH = os.getenv("DUCKDB_MCP_DB_PATH", ":memory:")
 # so new files are picked up without restarting the server.
 ACCESS_MCP_SERVER_PATH = os.getenv(
     "ACCESS_MCP_SERVER_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "access_mcp_server", "server.py")
+    r"C:\Users\reach\Desktop\nvidia-chat-complete\backend\access_mcp_server\server.py"
 )
 ACCESS_MCP_FOLDER = os.getenv(
     "ACCESS_MCP_FOLDER",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    r"C:\Users\reach\Desktop\NVIDIA_NIM_PROJECTS\data"
 )
+
+# Tableau Cloud MCP server (official @tableau/mcp-server, via npx, stdio-based).
+TABLEAU_SERVER_URL = os.getenv("TABLEAU_SERVER_URL", "")
+TABLEAU_SITE_NAME = os.getenv("TABLEAU_SITE_NAME", "")
+TABLEAU_PAT_NAME = os.getenv("TABLEAU_PAT_NAME", "")
+TABLEAU_PAT_VALUE = os.getenv("TABLEAU_PAT_VALUE", "")
+TABLEAU_AUTH = os.getenv("TABLEAU_AUTH", "pat")
 
 # Native bash tool: sandboxed to one working directory, with a strict
 # allow-list of permitted command names. The first token of any command is
@@ -596,6 +609,22 @@ duckdb_mcp = MCPManager(
 access_mcp = MCPManager(
     command=sys.executable,
     args=[ACCESS_MCP_SERVER_PATH, "--folder", ACCESS_MCP_FOLDER]
+)
+
+# Official Tableau Cloud MCP server, launched via npx (same cmd /c wrapper
+# as the Filesystem MCP since npx is a .cmd shim on Windows). Credentials
+# are passed as environment variables to the subprocess.
+tableau_mcp = MCPManager(
+    command="cmd",
+    args=["/c", "npx", "-y", "@tableau/mcp-server@latest"],
+    env={
+        **os.environ.copy(),
+        "SERVER": TABLEAU_SERVER_URL,
+        "SITE_NAME": TABLEAU_SITE_NAME,
+        "AUTH": TABLEAU_AUTH,
+        "PAT_NAME": TABLEAU_PAT_NAME,
+        "PAT_VALUE": TABLEAU_PAT_VALUE,
+    }
 )
 
 
@@ -1139,7 +1168,7 @@ async def chat_stream(
         full_response = ""
         try:
             if chat.use_mcp:
-                active_mcp_managers = [m for m in (powerbi_mcp, filesystem_mcp, duckdb_mcp, access_mcp, native_tools) if m.is_connected()]
+                active_mcp_managers = [m for m in (powerbi_mcp, filesystem_mcp, duckdb_mcp, access_mcp, native_tools, tableau_mcp) if m.is_connected()]
                 if not active_mcp_managers:
                     yield f"data: {json.dumps({'error': 'No MCP server is connected. Connect one first from Chat Options.'})}\n\n"
                     return
@@ -1459,6 +1488,39 @@ async def native_tools_status():
         "tools": [t["function"]["name"] for t in tools],
         "bash_workdir": BASH_TOOL_WORKDIR,
         "bash_allowed_commands": sorted(BASH_TOOL_ALLOWED_COMMANDS)
+    }
+
+# ============================================================================
+# API ROUTES - MCP (Tableau Cloud MCP server)
+# ============================================================================
+
+@app.post("/api/mcp/tableau/connect")
+async def mcp_tableau_connect():
+    """Launch and connect to the official Tableau Cloud MCP server."""
+    try:
+        await tableau_mcp.connect()
+    except Exception as e:
+        logger.error(f"Failed to connect to Tableau MCP server: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect to Tableau MCP server: {e}")
+    tools = tableau_mcp.get_openai_tools()
+    return {"connected": True, "tool_count": len(tools), "tools": [t["function"]["name"] for t in tools]}
+
+@app.post("/api/mcp/tableau/disconnect")
+async def mcp_tableau_disconnect():
+    """Disconnect from the Tableau Cloud MCP server."""
+    await tableau_mcp.disconnect()
+    return {"connected": False}
+
+@app.get("/api/mcp/tableau/status")
+async def mcp_tableau_status():
+    """Check whether the Tableau MCP server is connected, and list its tools."""
+    tools = tableau_mcp.get_openai_tools() if tableau_mcp.is_connected() else []
+    return {
+        "connected": tableau_mcp.is_connected(),
+        "tool_count": len(tools),
+        "tools": [t["function"]["name"] for t in tools],
+        "server": TABLEAU_SERVER_URL,
+        "site": TABLEAU_SITE_NAME
     }
 
 # ============================================================================

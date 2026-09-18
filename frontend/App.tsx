@@ -180,6 +180,22 @@ const apiClient = {
     return res.json();
   },
 
+  async connectTableauMCP(): Promise<{ connected: boolean; tool_count: number; tools: string[] }> {
+    const res = await fetch(`${API_BASE_URL}/mcp/tableau/connect`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to connect to Tableau MCP server');
+    return res.json();
+  },
+
+  async disconnectTableauMCP(): Promise<void> {
+    await fetch(`${API_BASE_URL}/mcp/tableau/disconnect`, { method: 'POST' });
+  },
+
+  async getTableauMCPStatus(): Promise<{ connected: boolean; tool_count: number; tools: string[] }> {
+    const res = await fetch(`${API_BASE_URL}/mcp/tableau/status`);
+    if (!res.ok) throw new Error('Failed to get Tableau MCP status');
+    return res.json();
+  },
+
   async sendMessage(conversationId: number, message: string, model: string, temperature: number, maxTokens: number, image?: { data: string; media_type: string } | null, document?: { data: string; filename: string; media_type: string } | null, useMcp?: boolean): Promise<ReadableStream<Uint8Array> | null> {
     const res = await fetch(`${API_BASE_URL}/chat/stream`, {
       method: 'POST',
@@ -259,6 +275,9 @@ export default function NvidiaLLMChat() {
   const [bashConnected, setBashConnected] = useState(false);
   const [bashConnecting, setBashConnecting] = useState(false);
   const [bashToolCount, setBashToolCount] = useState(0);
+  const [tableauConnected, setTableauConnected] = useState(false);
+  const [tableauConnecting, setTableauConnecting] = useState(false);
+  const [tableauToolCount, setTableauToolCount] = useState(0);
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful AI assistant.');
   const [message, setMessage] = useState('');
   const [models, setModels] = useState<Model[]>([]);
@@ -727,6 +746,26 @@ const handleSendMessage = async () => {
     }
   };
 
+  const handleToggleTableauConnection = async () => {
+    if (tableauConnected) {
+      await apiClient.disconnectTableauMCP();
+      setTableauConnected(false);
+      setTableauToolCount(0);
+      return;
+    }
+    setTableauConnecting(true);
+    try {
+      const result = await apiClient.connectTableauMCP();
+      setTableauConnected(result.connected);
+      setTableauToolCount(result.tool_count);
+    } catch (err) {
+      setError('Failed to connect to Tableau Cloud MCP server. Check your credentials in .env.');
+      console.error(err);
+    } finally {
+      setTableauConnecting(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     try {
       await apiClient.updateSettings({
@@ -991,7 +1030,24 @@ const handleSendMessage = async () => {
                 </div>
               </div>
 
-              {(powerbiConnected || fsConnected || duckdbConnected || accessConnected || bashConnected) && (
+              {/* Tableau Cloud MCP Controls */}
+              <div className={`rounded-lg p-3 border ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`font-medium ${accentClass}`}>Tableau Cloud (MCP)</span>
+                  <button
+                    onClick={handleToggleTableauConnection}
+                    disabled={tableauConnecting}
+                    className={`px-2 py-1 rounded text-xs ${tableauConnected ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white disabled:opacity-50`}
+                  >
+                    {tableauConnecting ? 'Connecting...' : tableauConnected ? 'Disconnect' : 'Connect'}
+                  </button>
+                </div>
+                <div className="text-xs opacity-70 mt-1">
+                  {tableauConnected ? `Connected \u2014 ${tableauToolCount} tools` : 'Not connected'}
+                </div>
+              </div>
+
+              {(powerbiConnected || fsConnected || duckdbConnected || accessConnected || bashConnected || tableauConnected) && (
                 <label className="flex items-center gap-2 text-xs cursor-pointer">
                   <input
                     type="checkbox"
