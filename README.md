@@ -18,6 +18,12 @@ Vibara is a personal, NIM-powered agentic development environment inspired by mo
 - PDF, Excel and CSV extraction
 - Visible tool calls in the UI
 - Confirmation before destructive operations
+- Tableau Cloud MCP integration
+
+## New Integration
+
+Tableau Cloud via MCP:
+Vibara now integrates with Tableau Cloud through the Model Context Protocol (MCP), using NVIDIA Nemotron as the LLM powering the agent. This enables the agent to select and invoke Tableau tools as part of an agentic workflow  rather than simply generating responses about Tableau.
 
 ## Project structure
 
